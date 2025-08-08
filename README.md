@@ -17,14 +17,14 @@ A 3D interactive bathroom scene created with Three.js (version 0.160.0) featurin
    - Black three-piece faucet
    - Warm wood texture
 
-2. **Mirror**: 26" × 30" wavy wood mirror above vanity
+2. **Mirror**: 26" × 30" wavy frame mirror above vanity (height adjustable)
 
-3. **Vanity Light**: Black bar with two bell-shaped glass shades and warm lighting
+3. **Vanity Light**: Black bar with two bell-shaped glass shades and warm lighting (height adjustable)
 
 4. **Toilet**: 15" × 29" white toilet with tank, seat, and lid
 
-5. **Cabinet**: 25" × 24" × 10" wood cabinet above toilet with:
-   - Fluted texture pattern
+5. **Cabinet**: 25" × 11.8" × 10" wood cabinet above toilet with:
+   - Fluted texture doors
    - Two doors with black round knobs
    - Light wood finish matching vanity
 
@@ -49,10 +49,9 @@ A 3D interactive bathroom scene created with Three.js (version 0.160.0) featurin
 ## Technical Details
 
 - Built with Three.js 0.160.0
-- Uses OrbitControls for camera interaction
-- Implements realistic lighting with ambient and directional sources
-- All objects cast and receive shadows
-- Responsive design that adapts to window resizing
+- Uses custom orbit-style controls for camera interaction
+- Physically based rendering (MeshStandard/Physical), ACES tone mapping, soft shadows
+- Optional PBR textures and HDRI loaded from `assets/`
 
 ## File Structure
 
@@ -60,5 +59,6 @@ A 3D interactive bathroom scene created with Three.js (version 0.160.0) featurin
 bathroom-3d/
 ├── index.html          # Main HTML file
 ├── bathroom.js         # Three.js scene and logic
-└── README.md          # This file
+├── assets/             # Place PBR textures and HDRI here
+└── README.md           # This file
 ``` 
