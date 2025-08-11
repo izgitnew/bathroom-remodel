@@ -1,5 +1,11 @@
 // 3D Bathroom Scene - REALISTIC VERSION v3
 // Room dimensions: 102" × 32" × 108" (length × width × height)
+// Using ES modules for three + loaders
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'meshopt_decoder';
 console.log("Loading REALISTIC bathroom scene v3 with detailed models!");
 
 // Scene setup
@@ -37,17 +43,22 @@ function loadPBRTextures() {
 }
 
 function loadEnvironmentHDR() {
-    if (typeof THREE.RGBELoader === 'undefined') {
-        console.warn('RGBELoader not found. Using fallback environment.');
-        return;
-    }
-    const rgbe = new THREE.RGBELoader();
+    const rgbe = new RGBELoader();
     rgbe.setPath('assets/');
     rgbe.load('studio.hdr', (hdr) => {
         hdr.mapping = THREE.EquirectangularReflectionMapping;
         scene.environment = hdr;
     }, undefined, () => {
-        console.warn('HDRI not found at assets/studio.hdr; keeping default.');
+        console.warn('HDRI not found at assets/studio.hdr; attempting remote fallback.');
+        // Remote fallback HDR from polyhaven CDN (studio small)
+        const fallback = new RGBELoader();
+        fallback.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_03_1k.hdr', (hdr2) => {
+            hdr2.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = hdr2;
+            console.log('Loaded remote fallback HDR environment');
+        }, undefined, () => {
+            console.warn('Failed to load fallback HDR. Proceeding without environment map.');
+        });
     });
 }
 
@@ -118,6 +129,22 @@ const WALL_COLOR = 0x2D5016; // Sherwin-Williams 'Secret Garden' green
 const FLOOR_COLOR = 0x8B4513; // Medium brown wood
 const TRIM_COLOR = 0xFFFFFF;  // White trim
 const CEILING_COLOR = 0xF8F8F8; // Light gray ceiling
+// Vanity import scaling mode: 'uniformByWidth' | 'uniformByHeight' | 'exact'
+const VANITY_SCALE_MODE = 'uniformByWidth';
+// Toilet import scaling mode: 'uniformByDepth' | 'uniformByHeight' | 'exact'
+const TOILET_SCALE_MODE = 'uniformByHeight';
+// Toilet yaw orientation (radians). Clockwise 90° from facing into room.
+const TOILET_ROTATION_Y = Math.PI / 2; // rotated two more 90° steps clockwise from previous
+// Mirror scaling mode and targets
+const MIRROR_SCALE_MODE = 'uniformByHeight';
+const MIRROR_TARGET = { width: 24.5, height: 36, depth: 1.5 };
+// Mirror yaw orientation (radians)
+const MIRROR_ROTATION_Y = -Math.PI / 2; // counter-clockwise 90°
+// Cabinet scaling mode and targets (match vanity logic: preserve proportions, match width)
+const CABINET_SCALE_MODE = 'exact';
+const CABINET_TARGET = { width: 25, height: 11.8, depth: 10 };
+// Cabinet yaw orientation (radians)
+const CABINET_ROTATION_Y = Math.PI / 2; // counter-clockwise 90°
 
 // Lighting
 function setupLighting() {
@@ -239,341 +266,260 @@ function createRoom() {
 
 // Create vanity
 function createVanity() {
-    const vanityGroup = new THREE.Group();
-
-    // Open-frame vanity: side panels + back panel (no solid body hiding drawers)
-    const panelMaterial = oakMaterial;
-    const sideThickness = 1;
-    const sideHeight = 34;
-    const sideDepth = 22.5;
-    const halfWidth = 12;
-    
-    // Left side panel
-    const leftPanel = new THREE.Mesh(new THREE.BoxGeometry(sideThickness, sideHeight, sideDepth), panelMaterial);
-    leftPanel.position.set(-halfWidth + sideThickness / 2, sideHeight / 2, 0);
-    leftPanel.castShadow = true;
-    leftPanel.receiveShadow = true;
-    vanityGroup.add(leftPanel);
-
-    // Right side panel
-    const rightPanel = new THREE.Mesh(new THREE.BoxGeometry(sideThickness, sideHeight, sideDepth), panelMaterial);
-    rightPanel.position.set(halfWidth - sideThickness / 2, sideHeight / 2, 0);
-    rightPanel.castShadow = true;
-    rightPanel.receiveShadow = true;
-    vanityGroup.add(rightPanel);
-
-    // Back panel
-    const backThickness = 0.5;
-    const backPanel = new THREE.Mesh(new THREE.BoxGeometry(24 - sideThickness * 2, sideHeight - 2, backThickness), panelMaterial);
-    backPanel.position.set(0, sideHeight / 2 - 1, -sideDepth / 2 + backThickness / 2);
-    backPanel.castShadow = true;
-    vanityGroup.add(backPanel);
-
-    // Legs (tapered)
-    const legGeometry = new THREE.CylinderGeometry(1.2, 0.8, 6, 24);
-    const legMaterial = oakMaterial;
-    const legYOffset = 3;
-    const legInset = 2;
-    const legPositions = [
-        [-halfWidth + legInset, legYOffset, -sideDepth / 2 + legInset],
-        [halfWidth - legInset, legYOffset, -sideDepth / 2 + legInset],
-        [-halfWidth + legInset, legYOffset, sideDepth / 2 - legInset],
-        [halfWidth - legInset, legYOffset, sideDepth / 2 - legInset],
+    // Replace procedural vanity with GLB asset
+    const loader = new GLTFLoader();
+    // Hook up optional decoders if present
+    const ktx2 = new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+    try { ktx2.detectSupport(renderer); } catch (_) {}
+    loader.setKTX2Loader(ktx2);
+    loader.setMeshoptDecoder(MeshoptDecoder);
+    const candidatePaths = [
+        'assets/VanityRender.glb',
+        'assets/vanityrender.glb',
+        'assets/Vanityrender.glb',
+        'assets/vanityRender.glb'
     ];
-    for (const [x, y, z] of legPositions) {
-        const leg = new THREE.Mesh(legGeometry, legMaterial);
-        leg.position.set(x, y, z);
-        leg.castShadow = true;
-        vanityGroup.add(leg);
-    }
 
-    // Drawer fronts
-    const drawerCount = 3;
-    const drawerHeight = sideHeight / drawerCount;
-    const drawerFrontThickness = 0.7;
-    const drawerFrontWidth = 24 - sideThickness * 2 - 2; // small inset
-    const drawerMaterial = oakMaterial;
+    function onLoaded(gltf) {
+            const vanity = gltf.scene || gltf.scenes[0];
+            // Debug: log original hierarchy and sizes before any scaling/rotation
+            try {
+                const srcBBox = new THREE.Box3().setFromObject(vanity);
+                const srcSize = new THREE.Vector3();
+                srcBBox.getSize(srcSize);
+                console.log(`Vanity source size before scaling (X×Y×Z): ${srcSize.x.toFixed(3)} × ${srcSize.y.toFixed(3)} × ${srcSize.z.toFixed(3)} (model units)`);
+                console.log('Vanity children:');
+                vanity.children.forEach((child) => {
+                    const bb = new THREE.Box3().setFromObject(child);
+                    const s = new THREE.Vector3();
+                    bb.getSize(s);
+                    console.log(` - ${child.name || '(unnamed)'}: ${s.x.toFixed(3)} × ${s.y.toFixed(3)} × ${s.z.toFixed(3)}`);
+                });
+            } catch (e) {}
+            vanity.traverse((obj) => {
+                if (obj.isMesh) {
+                    obj.castShadow = true;
+                    obj.receiveShadow = true;
+                    const m = obj.material;
+                    if (m) {
+                        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+                        if (m.emissiveMap) m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+                        if (m.roughnessMap) m.roughnessMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                        if (m.metalnessMap) m.metalnessMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                        if (m.normalMap) m.normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                        m.needsUpdate = true;
+                        console.log('Material', m.name || '(unnamed)', {
+                            hasMap: !!m.map,
+                            hasNormal: !!m.normalMap,
+                            hasRoughness: !!m.roughnessMap,
+                            hasMetalness: !!m.metalnessMap,
+                            hasAO: !!m.aoMap,
+                        });
+                    }
+                }
+            });
 
-    for (let i = 0; i < drawerCount; i++) {
-        const front = new THREE.Mesh(
-            new THREE.BoxGeometry(drawerFrontWidth, drawerHeight - 2, drawerFrontThickness),
-            drawerMaterial
-        );
-        front.position.set(0, i * drawerHeight + drawerHeight / 2, sideDepth / 2 - drawerFrontThickness / 2);
-        front.castShadow = true;
-        vanityGroup.add(front);
+            // Scale and position to match the target footprint: 24" W x 22.5" D x ~34" H
+            const bbox = new THREE.Box3().setFromObject(vanity);
+            const size = new THREE.Vector3();
+            bbox.getSize(size);
 
-        // Fluted slats across the drawer front
-        const slatCount = 28;
-        const slatSpacing = drawerFrontWidth / slatCount;
-        const slatDepth = 0.4;
-        const slatMaterial = oakMaterial;
-        for (let s = 0; s < slatCount; s++) {
-            const x = -drawerFrontWidth / 2 + slatSpacing * (s + 0.5);
-            const slat = new THREE.Mesh(new THREE.BoxGeometry(slatSpacing * 0.9, drawerHeight - 2.5, slatDepth), slatMaterial);
-            slat.position.set(x, 0, drawerFrontThickness / 2 - slatDepth / 2);
-            front.add(slat);
-        }
+            const targetWidth = 24;   // inches (world X after rotation)
+            const targetDepth = 22.5; // inches (world Z after rotation)
+            const targetHeight = 34;  // inches (world Y)
 
-        // Knob
-        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.4, metalness: 0.8 }));
-        knob.position.set(0, 0, drawerFrontThickness / 2 + 0.3);
-        front.add(knob);
-    }
+            // Choose scaling mode
+            if (VANITY_SCALE_MODE === 'exact') {
+                // Per-axis (may distort). Map targets to model axes BEFORE rotation
+                const scaleX = targetDepth / (size.x || 1);   // model X -> world Z
+                const scaleY = targetHeight / (size.y || 1);  // model Y -> world Y
+                const scaleZ = targetWidth / (size.z || 1);   // model Z -> world X
+                vanity.scale.set(scaleX, scaleY, scaleZ);
+            } else if (VANITY_SCALE_MODE === 'uniformByHeight') {
+                const s = targetHeight / (size.y || 1);
+                vanity.scale.setScalar(s);
+            } else { // 'uniformByWidth'
+                const s = targetWidth / (size.z || 1); // model Z will become width after rotation
+                vanity.scale.setScalar(s);
+            }
 
-    // Countertop (white solid surface)
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(25, 1.5, 23.5), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.2, metalness: 0.0 }));
-    counter.position.y = 35.75;
-    counter.castShadow = true;
-    vanityGroup.add(counter);
+            // Recompute after scaling to center vertically on floor
+            const bbox2 = new THREE.Box3().setFromObject(vanity);
+            const center = new THREE.Vector3();
+            bbox2.getCenter(center);
+            const minY = bbox2.min.y;
 
-    // Integrated sink
-    const sink = new THREE.Mesh(new THREE.CylinderGeometry(7, 6.5, 2.5, 32), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.25, metalness: 0.0 }));
-    sink.position.y = 36.25;
-    vanityGroup.add(sink);
+            // Move model so it sits on the floor (y=0) and centered on X/Z
+            vanity.position.y -= minY; // bring base to y=0
+            vanity.position.x -= center.x;
+            vanity.position.z -= center.z;
 
-    // Sink drain
-    const drain = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.5, 16), new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.9 }));
-    drain.position.y = 35.5;
-    vanityGroup.add(drain);
+            // Rotate counter-clockwise 90 degrees
+            vanity.rotation.y = -Math.PI / 2; // -90 degrees
 
-    // Modern black faucet with two handles
-    const faucetGroup = new THREE.Group();
-    const faucetMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.35, metalness: 0.9 });
-
-    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 6, 16), faucetMaterial);
-    spout.position.set(0, 3, 0);
-    spout.rotation.x = Math.PI / 6;
-    faucetGroup.add(spout);
-
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1, 16), faucetMaterial);
-    faucetGroup.add(base);
-
-    const leftHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 3, 16), faucetMaterial);
-    leftHandle.position.set(-2.5, 1.5, 0);
-    leftHandle.rotation.z = Math.PI / 2;
-    faucetGroup.add(leftHandle);
-
-    const rightHandle = leftHandle.clone();
-    rightHandle.position.set(2.5, 1.5, 0);
-    rightHandle.rotation.z = -Math.PI / 2;
-    faucetGroup.add(rightHandle);
-
-    faucetGroup.position.set(0, 39, 0);
-    vanityGroup.add(faucetGroup);
-
-    vanityGroup.position.set(0, 0, -LENGTH / 2 + 11.25);
+            // Group for placement against back wall
+            const vanityGroup = new THREE.Group();
+            vanityGroup.add(vanity);
+            // Place against the back wall using the model's actual depth after scaling
+            const finalBBox = new THREE.Box3().setFromObject(vanity);
+            const finalSize = new THREE.Vector3();
+            finalBBox.getSize(finalSize);
+            const halfDepth = finalSize.z / 2;
+            // small back gap to avoid z-fighting with wall
+            const backGap = 0.25; // inches
+            vanityGroup.position.set(0, 0, -LENGTH / 2 + halfDepth + backGap);
     scene.add(vanityGroup);
-    console.log("Vanity added to scene at position:", vanityGroup.position);
-    console.log("Vanity group children count:", vanityGroup.children.length);
-    console.log("Vanity group bounding box:", new THREE.Box3().setFromObject(vanityGroup));
+            console.log('GLB vanity loaded and placed:', vanityGroup.position);
+            console.log(`Vanity scale mode: ${VANITY_SCALE_MODE}`);
+            console.log(`Vanity final size (W x H x D): ${finalSize.x.toFixed(2)}" × ${finalSize.y.toFixed(2)}" × ${finalSize.z.toFixed(2)}"`);
+            try {
+                const info = document.getElementById('info');
+                if (info) {
+                    const dimsLine = `Vanity: ${finalSize.x.toFixed(2)}\" W × ${finalSize.y.toFixed(2)}\" H × ${finalSize.z.toFixed(2)}\" D`;
+                    const p = document.createElement('p');
+                    p.textContent = dimsLine;
+                    info.appendChild(p);
+                }
+            } catch (_) {}
+    }
+
+    // Try candidate paths until one succeeds
+    (function tryNext(i){
+        if (i >= candidatePaths.length) {
+            console.error('Failed to load vanity GLB from candidates:', candidatePaths);
+            return;
+        }
+        const path = candidatePaths[i];
+        loader.load(path, onLoaded, undefined, () => {
+            console.warn('Failed to load', path, '— trying next');
+            tryNext(i+1);
+        });
+    })(0);
 }
 
-// Create toilet (more realistic)
+// Create toilet (load from GLB)
 function createToilet() {
-    const toiletGroup = new THREE.Group();
+    const loader = new GLTFLoader();
+    const ktx2 = new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+    try { ktx2.detectSupport(renderer); } catch (_) {}
+    loader.setKTX2Loader(ktx2);
+    loader.setMeshoptDecoder(MeshoptDecoder);
 
-    // Materials
-    const ceramicMaterial = new THREE.MeshPhysicalMaterial({
-        color: 0xffffff,
-        roughness: 0.3,
-        metalness: 0.0,
-        clearcoat: 0.55,
-        clearcoatRoughness: 0.18
-    });
-    const plasticMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.0 });
-    const metalMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.35, metalness: 0.9 });
+    const candidates = [
+        'assets/toilet.glb',
+        'assets/Toilet.glb',
+        'assets/toilet_low.glb'
+    ];
 
-    // Base pedestal (Lathe)
-    const basePts = [];
-    basePts.push(new THREE.Vector2(6.5, 0));   // base outer
-    basePts.push(new THREE.Vector2(7.5, 0.3));
-    basePts.push(new THREE.Vector2(7.2, 1.0));
-    basePts.push(new THREE.Vector2(6.0, 3.0));
-    basePts.push(new THREE.Vector2(5.8, 4.5));
-    basePts.push(new THREE.Vector2(6.2, 7.5)); // top of pedestal
-    const baseGeo = new THREE.LatheGeometry(basePts, 48);
-    const baseMesh = new THREE.Mesh(baseGeo, ceramicMaterial);
-    baseMesh.position.set(0, 0, 0);
-    baseMesh.castShadow = true;
-    baseMesh.receiveShadow = true;
-    toiletGroup.add(baseMesh);
+    // From provided spec image: width 18", depth 29.5", height 33.25" (seat height 16.5" noted separately)
+    const target = { width: 18, depth: 29.5, height: 33.25 }; // inches
 
-    // Bowl outer (Lathe)
-    const bowlOuterPts = [];
-    bowlOuterPts.push(new THREE.Vector2(5.8, 7.5)); // start at top of pedestal
-    bowlOuterPts.push(new THREE.Vector2(6.2, 10.0));
-    bowlOuterPts.push(new THREE.Vector2(6.8, 12.0));
-    bowlOuterPts.push(new THREE.Vector2(6.4, 13.0));
-    bowlOuterPts.push(new THREE.Vector2(5.6, 14.0));
-    bowlOuterPts.push(new THREE.Vector2(5.0, 15.5)); // rim level
-    const bowlOuterGeo = new THREE.LatheGeometry(bowlOuterPts, 48);
-    const bowlOuter = new THREE.Mesh(bowlOuterGeo, ceramicMaterial);
-    bowlOuter.castShadow = true;
-    toiletGroup.add(bowlOuter);
+    function placeToilet(gltf) {
+        const model = gltf.scene || gltf.scenes[0];
+        model.traverse((o) => {
+            if (o.isMesh) {
+                o.castShadow = true;
+                o.receiveShadow = true;
+                const m = o.material;
+                if (m && m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+            }
+        });
 
-    // Inner bowl (Lathe, BackSide)
-    const bowlInnerPts = [];
-    bowlInnerPts.push(new THREE.Vector2(4.2, 7.6));
-    bowlInnerPts.push(new THREE.Vector2(3.8, 10.4));
-    bowlInnerPts.push(new THREE.Vector2(3.6, 12.5));
-    bowlInnerPts.push(new THREE.Vector2(3.6, 14.6));
-    const bowlInnerGeo = new THREE.LatheGeometry(bowlInnerPts, 48);
-    const bowlInner = new THREE.Mesh(bowlInnerGeo, new THREE.MeshPhysicalMaterial({
-        color: 0xffffff,
-        roughness: 0.25,
-        clearcoat: 0.6,
-        clearcoatRoughness: 0.15,
-        side: THREE.BackSide
-    }));
-    bowlInner.castShadow = false;
-    toiletGroup.add(bowlInner);
+        // Compute source size
+        const srcBox = new THREE.Box3().setFromObject(model);
+        const srcSize = new THREE.Vector3();
+        srcBox.getSize(srcSize);
 
-    // Rim (thin ring via extrude ellipse)
-    const rimShape = new THREE.Shape();
-    rimShape.absellipse(0, 0, 6.0, 4.5, 0, Math.PI * 2, false, 0);
-    const rimHole = new THREE.Path();
-    rimHole.absellipse(0, 0, 4.2, 3.2, 0, Math.PI * 2, false, 0);
-    rimShape.holes.push(rimHole);
-    const rimGeo = new THREE.ExtrudeGeometry(rimShape, { depth: 0.6, bevelEnabled: false });
-    const rim = new THREE.Mesh(rimGeo, ceramicMaterial);
-    rim.rotation.x = -Math.PI / 2;
-    rim.position.set(0, 15.5, 0);
-    rim.castShadow = true;
-    toiletGroup.add(rim);
+        // Scale according to mode
+        if (TOILET_SCALE_MODE === 'exact') {
+            const sx = target.width / (srcSize.x || 1);
+            const sy = target.height / (srcSize.y || 1);
+            const sz = target.depth / (srcSize.z || 1);
+            model.scale.set(sx, sy, sz);
+        } else if (TOILET_SCALE_MODE === 'uniformByHeight') {
+            const s = target.height / (srcSize.y || 1);
+            model.scale.setScalar(s);
+        } else { // uniformByDepth
+            const s = target.depth / (srcSize.z || 1);
+            model.scale.setScalar(s);
+        }
 
-    // Seat (plastic ring)
-    const seatShape = new THREE.Shape();
-    seatShape.absellipse(0, 0, 6.1, 4.6, 0, Math.PI * 2, false, 0);
-    const seatHole = new THREE.Path();
-    seatHole.absellipse(0, 0, 4.0, 3.0, 0, Math.PI * 2, false, 0);
-    seatShape.holes.push(seatHole);
-    const seatGeo = new THREE.ExtrudeGeometry(seatShape, { depth: 0.4, bevelEnabled: false });
-    const seat = new THREE.Mesh(seatGeo, plasticMaterial);
-    seat.rotation.x = -Math.PI / 2;
-    seat.position.set(0, 16.1, 0);
-    seat.castShadow = true;
-    toiletGroup.add(seat);
+        // Floor and center
+        const box2 = new THREE.Box3().setFromObject(model);
+        const center = new THREE.Vector3();
+        box2.getCenter(center);
+        const minY = box2.min.y;
+        model.position.y -= minY;
+        model.position.x -= center.x;
+        model.position.z -= center.z;
 
-    // Lid (oval)
-    const lidShape = new THREE.Shape();
-    lidShape.absellipse(0, 0, 6.2, 4.7, 0, Math.PI * 2, false, 0);
-    const lidGeo = new THREE.ExtrudeGeometry(lidShape, { depth: 0.5, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1, bevelSegments: 2 });
-    const lid = new THREE.Mesh(lidGeo, plasticMaterial);
-    lid.rotation.x = -Math.PI / 2;
-    lid.position.set(0, 16.7, -0.2);
-    lid.castShadow = true;
-    toiletGroup.add(lid);
+        // Orientation and placement against front wall
+        model.rotation.y = TOILET_ROTATION_Y;
+        const boxFinal = new THREE.Box3().setFromObject(model);
+        const finalSize = new THREE.Vector3();
+        boxFinal.getSize(finalSize);
+        const halfDepth = finalSize.z / 2;
+        const group = new THREE.Group();
+        group.add(model);
+        const frontGap = 0.5; // inches from front wall
+        group.position.set(0, 0, LENGTH/2 - halfDepth - frontGap);
+        scene.add(group);
+        console.log('Toilet GLB loaded. Final size (W x H x D):', `${finalSize.x.toFixed(2)}" × ${finalSize.y.toFixed(2)}" × ${finalSize.z.toFixed(2)}"`);
+    }
 
-    // Hinges
-    const hingeLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.2, 16), metalMaterial);
-    hingeLeft.rotation.z = Math.PI / 2;
-    hingeLeft.position.set(-2.0, 16.4, -1.8);
-    const hingeRight = hingeLeft.clone();
-    hingeRight.position.x = 2.0;
-    toiletGroup.add(hingeLeft, hingeRight);
-
-    // Tank (box with slight rounding suggestion via scaled cylinders at ends)
-    const tank = new THREE.Mesh(new THREE.BoxGeometry(13, 10, 6.5), ceramicMaterial);
-    tank.position.set(0, 22.5, -9.8);
-    tank.castShadow = true;
-    toiletGroup.add(tank);
-
-    // Tank lid
-    const tankLid = new THREE.Mesh(new THREE.BoxGeometry(13.2, 1.2, 6.7), ceramicMaterial);
-    tankLid.position.set(0, 28.1, -9.8);
-    tankLid.castShadow = true;
-    toiletGroup.add(tankLid);
-
-    // Flush handle
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 2.2, 16), metalMaterial);
-    handle.rotation.z = Math.PI / 2;
-    handle.position.set(6.0, 25.0, -6.7);
-    toiletGroup.add(handle);
-
-    // Bolt caps (small domes)
-    const boltL = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), ceramicMaterial);
-    boltL.position.set(-2.5, 15.6, 4.0);
-    const boltR = boltL.clone();
-    boltR.position.x = 2.5;
-    toiletGroup.add(boltL, boltR);
-
-    // Final placement in room
-    toiletGroup.position.set(0, 0, LENGTH/2 - 14.5);
-    toiletGroup.rotation.y = Math.PI;
-    scene.add(toiletGroup);
-    console.log("Toilet added to scene at position:", toiletGroup.position);
+    (function tryNext(i){
+        if (i >= candidates.length) {
+            console.warn('Toilet GLB not found in candidates; keeping procedural toilet.');
+            // Fallback: very simple placeholder
+            const placeholder = new THREE.Mesh(new THREE.BoxGeometry(15, 16, 28), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+            placeholder.castShadow = true;
+            const group = new THREE.Group();
+            group.add(placeholder);
+            group.position.set(0, 0, LENGTH/2 - 14.5);
+            group.rotation.y = Math.PI;
+            scene.add(group);
+            return;
+        }
+        const path = candidates[i];
+        loader.load(path, placeToilet, undefined, () => tryNext(i+1));
+    })(0);
 }
 
 // Create mirror
 function createMirror() {
-    const mirrorGroup = new THREE.Group();
+    const loader = new GLTFLoader();
+    const candidates = ['assets/mirror.glb', 'assets/Mirror.glb'];
 
-    // Wavy frame via extruded shape
-    const frameWidth = 26;
-    const frameHeight = 30;
-    const frameThickness = 2;
-    const waveAmplitude = 1.6; // subtler wave
-    const segments = 24;
-
-    const pts = [];
-    // Top edge
-    for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const x = -frameWidth / 2 + frameWidth * t;
-        const y = frameHeight / 2 + Math.sin(t * Math.PI * 2) * waveAmplitude;
-        pts.push(new THREE.Vector2(x, y));
+    function place(gltf) {
+        const model = gltf.scene || gltf.scenes[0];
+        model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        const src = new THREE.Box3().setFromObject(model); const s = new THREE.Vector3(); src.getSize(s);
+        if (MIRROR_SCALE_MODE === 'uniformByWidth') {
+            const k = MIRROR_TARGET.width / (s.x || 1); model.scale.setScalar(k);
+        } else if (MIRROR_SCALE_MODE === 'uniformByHeight') {
+            const k = MIRROR_TARGET.height / (s.y || 1); model.scale.setScalar(k);
+        } else if (MIRROR_SCALE_MODE === 'exact') {
+            model.scale.set(
+                MIRROR_TARGET.width / (s.x || 1),
+                MIRROR_TARGET.height / (s.y || 1),
+                MIRROR_TARGET.depth / (s.z || 1)
+            );
+        }
+        // Center model at origin
+        const b2 = new THREE.Box3().setFromObject(model); const c = new THREE.Vector3(); b2.getCenter(c);
+        model.position.x -= c.x; model.position.y -= c.y; model.position.z -= c.z;
+        // Group for placement/rotation
+        const group = new THREE.Group(); group.add(model);
+        group.rotation.y = MIRROR_ROTATION_Y;
+        // Place against the back wall, centered vertically at 55"
+        const bFinal = new THREE.Box3().setFromObject(group); const sizeF = new THREE.Vector3(); bFinal.getSize(sizeF);
+        const gap = 0.25;
+        const halfDepth = sizeF.z / 2;
+        group.position.set(0, 55, -LENGTH/2 + halfDepth + gap);
+        scene.add(group);
+        console.log('Mirror GLB loaded. Final size (W x H x D):', `${sizeF.x.toFixed(2)}" × ${sizeF.y.toFixed(2)}" × ${sizeF.z.toFixed(2)}"`);
     }
-    // Right edge
-    for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const y = frameHeight / 2 - frameHeight * t;
-        const x = frameWidth / 2 + Math.sin(t * Math.PI * 2) * waveAmplitude;
-        pts.push(new THREE.Vector2(x, y));
-    }
-    // Bottom edge
-    for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const x = frameWidth / 2 - frameWidth * t;
-        const y = -frameHeight / 2 + Math.sin(t * Math.PI * 2) * waveAmplitude;
-        pts.push(new THREE.Vector2(x, y));
-    }
-    // Left edge
-    for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const y = -frameHeight / 2 + frameHeight * t;
-        const x = -frameWidth / 2 + Math.sin(t * Math.PI * 2) * waveAmplitude;
-        pts.push(new THREE.Vector2(x, y));
-    }
-
-    const outer = new THREE.Shape(pts);
-
-    const inset = 3.0;
-    const inner = new THREE.Path();
-    inner.moveTo(-frameWidth / 2 + inset, -frameHeight / 2 + inset);
-    inner.lineTo(frameWidth / 2 - inset, -frameHeight / 2 + inset);
-    inner.lineTo(frameWidth / 2 - inset, frameHeight / 2 - inset);
-    inner.lineTo(-frameWidth / 2 + inset, frameHeight / 2 - inset);
-    inner.lineTo(-frameWidth / 2 + inset, -frameHeight / 2 + inset);
-    outer.holes.push(inner);
-
-    const frameGeo = new THREE.ExtrudeGeometry(outer, { depth: frameThickness, bevelEnabled: false, steps: 1 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.6, metalness: 0.0 });
-    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
-    frameMesh.castShadow = true;
-    mirrorGroup.add(frameMesh);
-
-    // Glass inset
-    const glassGeo = new THREE.PlaneGeometry(frameWidth - inset * 2, frameHeight - inset * 2);
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0xE0E0E0, roughness: 0.05, metalness: 0.0, transparent: true, opacity: 0.9 });
-    const glass = new THREE.Mesh(glassGeo, glassMat);
-    glass.position.z = frameThickness * 0.55;
-    mirrorGroup.add(glass);
-
-    mirrorGroup.position.set(0, 55, -LENGTH/2 + 1);
-    mirrorGroup.castShadow = true;
-    scene.add(mirrorGroup);
-    console.log("Mirror added to scene at position:", mirrorGroup.position);
+    (function next(i){ if (i>=candidates.length) return console.warn('Mirror GLB not found'); loader.load(candidates[i], place, undefined, ()=>next(i+1)); })(0);
 }
 
 // Create vanity light
@@ -625,46 +571,30 @@ function createVanityLight() {
 
 // Create cabinet above toilet
 function createCabinet() {
-    const cabinetGroup = new THREE.Group();
-    
-    // Main cabinet body
-    const cabinetGeometry = new THREE.BoxGeometry(25, 11.8, 10);
-    const cabinetMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xD2B48C,
-        roughness: 0.6,
-        metalness: 0.0
-    });
-    const cabinet = new THREE.Mesh(cabinetGeometry, cabinetMaterial);
-    cabinet.castShadow = true;
-    cabinet.receiveShadow = true;
-    cabinetGroup.add(cabinet);
-    
-    // Two cabinet doors with fluted texture
-    const doorWidth = 12;
-    for (let i = 0; i < 2; i++) {
-        const doorGeometry = new THREE.BoxGeometry(doorWidth - 1, 9.8, 1);
-        const doorMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xC19A6B,
-            roughness: 0.55,
-            metalness: 0.0
-        });
-        const door = new THREE.Mesh(doorGeometry, doorMaterial);
-        door.position.set((i - 0.5) * doorWidth, 0, 5.5);
-        door.castShadow = true;
-        cabinetGroup.add(door);
-        
-        // Door knob (black round knob)
-        const knobGeometry = new THREE.SphereGeometry(0.5, 16, 16);
-        const knobMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.4, metalness: 0.8 });
-        const knob = new THREE.Mesh(knobGeometry, knobMaterial);
-        knob.position.set(0, 0, 0.6);
-        door.add(knob);
+    const loader = new GLTFLoader();
+    const candidates = ['assets/cabinet2.glb', 'assets/Cabinet2.glb', 'assets/cabinet.glb', 'assets/Cabinet.glb'];
+
+    function place(gltf) {
+        const model = gltf.scene || gltf.scenes[0];
+        model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        const src = new THREE.Box3().setFromObject(model); const s = new THREE.Vector3(); src.getSize(s);
+        // Many cabinet GLBs have width along Z and depth along X. Map accordingly.
+        if (CABINET_SCALE_MODE === 'uniformByWidth') {
+            const k = CABINET_TARGET.width / (s.z || 1); // lock width using model Z
+            model.scale.setScalar(k);
+        } else if (CABINET_SCALE_MODE === 'exact') {
+            const scaleX = CABINET_TARGET.depth / (s.x || 1);   // model X -> world depth
+            const scaleY = CABINET_TARGET.height / (s.y || 1);  // model Y -> world height
+            const scaleZ = CABINET_TARGET.width / (s.z || 1);   // model Z -> world width
+            model.scale.set(scaleX, scaleY, scaleZ);
+        }
+        const b2 = new THREE.Box3().setFromObject(model); const c = new THREE.Vector3(); b2.getCenter(c); const minY = b2.min.y;
+        model.position.y -= minY; model.position.x -= c.x; model.position.z -= c.z;
+        const group = new THREE.Group(); group.add(model);
+        group.position.set(0, 60, LENGTH/2 - 5);
+        group.rotation.y = CABINET_ROTATION_Y; scene.add(group); console.log('Cabinet GLB loaded');
     }
-    
-    cabinetGroup.position.set(0, 60, LENGTH/2 - 5);
-    cabinetGroup.rotation.y = Math.PI;
-    scene.add(cabinetGroup);
-    console.log("Cabinet added to scene at position:", cabinetGroup.position);
+    (function next(i){ if (i>=candidates.length) return console.warn('Cabinet GLB not found'); loader.load(candidates[i], place, undefined, ()=>next(i+1)); })(0);
 }
 
 // Create towel ring
@@ -689,6 +619,7 @@ function init() {
     console.log("Scene cleared");
     
     setupLighting();
+    loadEnvironmentHDR();
     console.log("Lighting setup complete");
     createRoom();
     console.log("Room creation complete");

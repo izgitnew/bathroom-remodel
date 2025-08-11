@@ -37,9 +37,18 @@
         <p>Room: 102" × 32" × 108"</p>
     </div>
 
-    <!-- Three.js CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
-    
-    <script src="bathroom.js?v=11"></script>
+    <!-- Import map so addon modules can resolve the bare 'three' specifier -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "meshopt_decoder": "https://unpkg.com/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js"
+      }
+    }
+    </script>
+
+    <!-- Load ES module entrypoint (imports three + loaders) -->
+    <script type="module" src="bathroom.js?v=13"></script>
 </body>
 </html> 
